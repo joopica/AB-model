@@ -1,0 +1,174 @@
+import numpy as np
+
+import load
+import methods as m
+
+from random import random
+from random import choice
+
+
+def init_matrix(A):
+        # return matrix of same size as A and list of vertice degrees at indices initialized to 0
+    return np.zeros(A.shape, dtype=int), np.zeros(A.shape[0], dtype=int)
+
+
+def clean_vertices(graph_verts, loose_verts):
+      # used only if vertices are randomized and pop() function is not used in implementation
+    return [v for v in loose_verts if v not in graph_verts]
+
+
+def prob_of_link_LCD(degrees, vertex, t):
+      # where degrees is list of degrees at vertex i and vertex is index of v
+      # returns probability based on LCD algorithm in BA book
+      # print(f'degree of v: {vertex} is {degrees[vertex]} t is {t}')
+    if 1 <= vertex + 1 and vertex + 1 <= t - 1:
+        return degrees[vertex] / ((2 * t) - 1)
+    elif vertex + 1 == t:
+        return 1 / ((2 * t) - 1)
+
+
+def prob_of_link_AB_LCD(sumd, vertex, degrees):
+      # where sumd has 1 added to degrees of j if current vertex degree is 0
+      # to avoid dividing by 0
+      # assumes no v in graph will have degree 0
+    if degrees[vertex] == 0:
+        return 1 / sumd
+        # print(f'degree: {degrees[vertex]} / {sum(degrees) + 1}')
+    else:
+        # print(f'degree: {degrees[vertex]} / {sumd}')
+        return degrees[vertex] / sumd
+
+
+def link_probabilities(vert_candidates, sumd, degrees, ptype, t):
+      # where vert_candidates is list of v indices in graph
+      # returns list of (v, prob_v) tuples
+    probs = []
+
+    if ptype == 'AB_LCD':
+        for v in vert_candidates:
+            p = prob_of_link_AB_LCD(sumd, v, degrees)
+            probs.append(p)
+
+    elif ptype == 'LCD': 
+        for v in vert_candidates:
+            p = prob_of_link_LCD(degrees, v, t)
+            probs.append(p)
+
+      # making list of tuples (v index, prob interval)
+    prob_intervals = []
+    prob = 0
+    for p in probs:
+        prob_intervals.append((prob, prob + p))
+        prob = prob + p
+    return zip(vert_candidates, prob_intervals)
+
+
+def choose_vertex(vertices):
+        # choose index randomly from list vertices
+    return choice(vertices)
+
+
+def choose_link(vertices, degrees, curr, ptype, t):
+    # where vertices is list of vertex indices to choose from and probs is list of prob intervals
+    # self links are allowed
+    # returns index of chosen link
+    rand = random()
+    print(rand)
+
+    if degrees[curr] == 0:
+        sumd = sum(degrees) + 1
+    else:
+        sumd = sum(degrees)
+
+    probs = link_probabilities(vertices, sumd, degrees, ptype, t)
+
+    for p in probs:
+        if p[1][0] < rand and rand <= p[1][1]:
+            # print(f'link {p[0]} chosen with probs {p[1]} rand: {rand}')
+            return p[0]
+
+    print("!!!          ERROR: NO LINK CHOSEN              !!!")
+
+
+def link_new(m, A, degrees, vertices_in_graph, vertices_not_in_graph, new, t, ptype):
+
+    neighbour = choose_link(vertices_in_graph, degrees, new, ptype, t)
+    # print(f'NEIGHBOUR: {neighbour} NEW: {new}')
+
+    if A[new][neighbour] != 1:
+        # print(
+        #     f'##  Adding link ({new},{neighbour}) degrees {degrees[new]} and {degrees[neighbour]}')
+        A[new][neighbour] = 1
+        A[neighbour][new] = 1
+        degrees[new] = degrees[new] + 1
+        degrees[neighbour] = degrees[neighbour] + 1
+        print(
+            f'####  Link added ({new},{neighbour}) degrees {degrees[new]} and {degrees[neighbour]}')
+
+
+def link_node_AB_LCD(m, A, degrees, vertices_in_graph, vertices_not_in_graph, t, ptype):
+    new = vertices_not_in_graph.pop(0)
+    vertices_in_graph.append(new)
+    
+    # makes one new link
+    # choose new vertex and update lists
+    # working on randomized vertex version
+    # new = choose_vertex(vertices_not_in_graph)
+
+      # specifies type: Albert-Barabasi Linearalized Chord Diagram Hybrid model
+    if ptype == 'AB_LCD':
+        # links multiple
+        if len(vertices_in_graph) <= m:
+            link_new(m, A, degrees, vertices_in_graph,
+                     vertices_not_in_graph, new, t, ptype)
+        else:
+            for i in range(m):
+                link_new(m, A, degrees, vertices_in_graph,
+                         vertices_not_in_graph, new, t, ptype)
+                         
+      # specifies type: Linearalized Chord Diagram model
+    elif ptype == 'LCD':
+        # only links one
+        link_new(m, A, degrees, vertices_in_graph,
+                 vertices_not_in_graph, new, t, ptype)
+
+    return t + 1
+
+
+def AB_LCD_hybrid_model(m, n, adjM, ptype):
+    # AB model including calculation of self vertex probability 1/sum(degrees) if current vertex not in graph
+    # done to avoid dividing by 0 if sum(dj) = 0 (might try taking out)
+    # self loops removed after, self vertex equivalent to no vertex
+    # vertex selection is not randomized, in order of index using pop function
+    A, degrees = init_matrix(adjM)
+
+    t = 0
+
+    vertices_in_graph = []
+    vertices_not_in_graph = list(range(0, A.shape[0]))
+
+    t = 1
+
+    # connect first to itself
+    A[0][0] = 1
+    degrees[0] = 2
+    vertices_in_graph.append(vertices_not_in_graph.pop(0))
+    # clean_vertices(vertices_in_graph, vertices_not_in_graph)
+
+    t = t + 1
+
+    while t < n:
+        t = link_node_AB_LCD(m, A, degrees, vertices_in_graph,
+                             vertices_not_in_graph, t, ptype)
+
+    for i in range(len(A)):
+        if A[i][i] == 1:
+            A[i][i] = 0
+            degrees[i] = degrees[i] - 2
+
+    print(A)
+    print(A.sum(axis=1))
+    print(f'checking degrees: {np.equal(degrees, A.sum(axis=1))})')
+    print(f'AB created: {type(A)} {A.shape}')
+
+    return A, degrees
